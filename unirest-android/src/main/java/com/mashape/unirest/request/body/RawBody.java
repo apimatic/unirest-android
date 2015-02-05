@@ -25,31 +25,29 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 package com.mashape.unirest.request.body;
 
-import local.org.apache.http.HttpEntity;
-import local.org.apache.http.entity.StringEntity;
-
 import com.mashape.unirest.request.BaseRequest;
 import com.mashape.unirest.request.HttpRequest;
+import local.org.apache.http.HttpEntity;
+import local.org.apache.http.entity.ByteArrayEntity;
 
-public class RequestBodyEntity extends BaseRequest implements Body {
+public class RawBody extends BaseRequest implements Body {
 
-	private Object body;
-	
-	public RequestBodyEntity(HttpRequest httpRequest) {
-		super(httpRequest);
-	}
-	
-	public RequestBodyEntity body(String body) {
-		this.body = body;
-		return this;
-	}
-	
-	public Object getBody() {
-		return body;
-	}
+    private byte[] body;
 
-	public HttpEntity getEntity() {
-		return new StringEntity(body.toString(), UTF_8);
-	}
+    public RawBody(HttpRequest httpRequest) {
+        super(httpRequest);
+    }
 
+    public RawBody body(byte[] body) {
+        this.body = body;
+        return this;
+    }
+
+    public Object getBody() {
+        return body;
+    }
+
+    public HttpEntity getEntity() {
+        return new ByteArrayEntity(body);
+    }
 }

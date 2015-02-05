@@ -26,57 +26,62 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 package com.mashape.unirest.http;
 
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.zip.GZIPInputStream;
 
 import local.org.apache.http.Header;
 import local.org.apache.http.HttpEntity;
+import local.org.apache.http.StatusLine;
+import local.org.apache.http.util.EntityUtils;
+
+import com.mashape.unirest.http.utils.ResponseUtils;
 
 public class HttpResponse<T> {
 
-	private int code;
-	private Map<String, String> headers;
+	private int statusCode;
+	private String statusText;
+	private Headers headers = new Headers();
 	private InputStream rawBody;
 	private T body;
 
-	private boolean isGzipped() {
-		Set<Entry<String, String>> headers = this.headers.entrySet();
-		for(Entry<String, String> header : headers) {
-			if (header.getKey().equalsIgnoreCase("content-encoding")) {
-				if (header.getValue() != null && header.getValue().equalsIgnoreCase("gzip")) {
-					return true;
-				}
-			}
-		}
-		return false;
-	}
-	
 	@SuppressWarnings("unchecked")
 	public HttpResponse(local.org.apache.http.HttpResponse response, Class<T> responseClass) {
 		HttpEntity responseEntity = response.getEntity();
 		
 		Header[] allHeaders = response.getAllHeaders();
-		this.headers = new HashMap<String, String>();
 		for(Header header : allHeaders) {
-			headers.put(header.getName().toLowerCase(), header.getValue());
+			String headerName = header.getName().toLowerCase();
+			List<String> list = headers.get(headerName);
+			if (list == null) list = new ArrayList<String>();
+			list.add(header.getValue());
+			headers.put(headerName, list);
 		}
-		this.code = response.getStatusLine().getStatusCode();
+		StatusLine statusLine = response.getStatusLine();
+		this.statusCode = statusLine.getStatusCode();
+		this.statusText = statusLine.getReasonPhrase();
 		
 		if (responseEntity != null) {
+			String charset = "UTF-8";
+			
+			Header contentType = responseEntity.getContentType();
+			if (contentType != null) {
+				String responseCharset = ResponseUtils.getCharsetFromContentType(contentType.getValue());
+				if (responseCharset != null && !responseCharset.trim().equals("")) {
+					charset = responseCharset;
+				}
+			}
+		
 			try {
 				byte[] rawBody;
 				try {
 					InputStream responseInputStream = responseEntity.getContent();
-					if (isGzipped()) {
+					if (ResponseUtils.isGzipped(responseEntity.getContentEncoding())) {
 						responseInputStream = new GZIPInputStream(responseEntity.getContent());
 					}
-					rawBody = getBytes(responseInputStream);
+					rawBody = ResponseUtils.getBytes(responseInputStream);
 				} catch (IOException e2) {
 					throw new RuntimeException(e2);
 				}
@@ -84,42 +89,33 @@ public class HttpResponse<T> {
 				this.rawBody = inputStream;
 
 				if (String.class.equals(responseClass)) {
-					this.body = (T) new String(rawBody);
+					this.body = (T) new String(rawBody, charset);
 				} else if (InputStream.class.equals(responseClass)) {
 					this.body = (T) this.rawBody;
 				} else {
-					throw new Exception("Unknown result type. Only String and InputStream are supported.");
+					throw new Exception("Unknown result type. Only String, JsonNode and InputStream are supported.");
 				}
 			} catch (Exception e) {
 				throw new RuntimeException(e);
 			}
 		}
-	}
-
-	private static byte[] getBytes(InputStream is) throws IOException {
-		int len;
-		int size = 1024;
-		byte[] buf;
-
-		if (is instanceof ByteArrayInputStream) {
-			size = is.available();
-			buf = new byte[size];
-			len = is.read(buf, 0, size);
-		} else {
-			ByteArrayOutputStream bos = new ByteArrayOutputStream();
-			buf = new byte[size];
-			while ((len = is.read(buf, 0, size)) != -1)
-				bos.write(buf, 0, len);
-			buf = bos.toByteArray();
+		
+		try {
+			EntityUtils.consume(responseEntity);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
 		}
-		return buf;
 	}
 
-	public int getCode() {
-		return code;
+	public int getStatus() {
+		return statusCode;
+	}
+	
+	public String getStatusText() {
+		return statusText;
 	}
 
-	public Map<String, String> getHeaders() {
+	public Headers getHeaders() {
 		return headers;
 	}
 
