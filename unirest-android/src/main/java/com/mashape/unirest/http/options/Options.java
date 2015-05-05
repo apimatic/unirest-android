@@ -5,9 +5,9 @@ import java.util.Map;
 
 import local.org.apache.http.HttpHost;
 import local.org.apache.http.client.config.RequestConfig;
+import local.org.apache.http.conn.ssl.AllowAllHostnameVerifier;
 import local.org.apache.http.impl.client.HttpClientBuilder;
 import local.org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
-import local.org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import local.org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 import local.org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager;
 import local.org.apache.http.impl.nio.reactor.DefaultConnectingIOReactor;
@@ -65,8 +65,10 @@ public class Options {
 		syncConnectionManager.setMaxTotal((Integer) maxTotal);
 		syncConnectionManager.setDefaultMaxPerRoute((Integer) maxPerRoute);
 		
-		// Create clients
-		setOption(Option.HTTPCLIENT, HttpClientBuilder.create().setDefaultRequestConfig(clientConfig).setConnectionManager(syncConnectionManager).build());
+		HttpClientBuilder syncClientBuilder = HttpClientBuilder.create()
+				.setDefaultRequestConfig(clientConfig)
+				.setConnectionManager(syncConnectionManager);
+
 		SyncIdleConnectionMonitorThread syncIdleConnectionMonitorThread = new SyncIdleConnectionMonitorThread(syncConnectionManager);
 		setOption(Option.SYNC_MONITOR, syncIdleConnectionMonitorThread);
 		syncIdleConnectionMonitorThread.start();
@@ -82,9 +84,22 @@ public class Options {
 			throw new RuntimeException(e);
 		}
 		
-		CloseableHttpAsyncClient asyncClient = HttpAsyncClientBuilder.create().setDefaultRequestConfig(clientConfig).setConnectionManager(asyncConnectionManager).build();
-		setOption(Option.ASYNCHTTPCLIENT, asyncClient);
-		setOption(Option.ASYNC_MONITOR, new AsyncIdleConnectionMonitorThread(asyncConnectionManager));
+		HttpAsyncClientBuilder asyncClientBuilder = HttpAsyncClientBuilder.create()
+				.setDefaultRequestConfig(clientConfig)
+				.setConnectionManager(asyncConnectionManager);
+		
+		AllowAllHostnameVerifier hostNameVerifier = new AllowAllHostnameVerifier();
+		
+		Object allowAllHostName = Options.getOption(Option.ALLOW_ALL_HOST_NAMES);
+		if(allowAllHostName != null){
+			syncClientBuilder = syncClientBuilder.setHostnameVerifier(hostNameVerifier);
+			asyncClientBuilder = asyncClientBuilder.setHostnameVerifier(hostNameVerifier);
+		}
+		
+		// Create clients
+		setOption(Option.HTTPCLIENT, syncClientBuilder.build());
+		setOption(Option.ASYNCHTTPCLIENT, asyncClientBuilder.build());
+		setOption(Option.ASYNC_MONITOR, new AsyncIdleConnectionMonitorThread(asyncConnectionManager));	
 	}
 	
 }
